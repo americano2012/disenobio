@@ -1,0 +1,64 @@
+#include <Wire.h> // Incluir la biblioteca Wire
+#include "MAX30105.h" // Incluir la biblioteca MAX30105
+#include "heartRate.h" // Incluir la biblioteca heartRate
+
+MAX30105 particleSensor; // Crear una instancia del sensor MAX30105
+
+const byte RATE_SIZE = 4; // Aumenta esto para más promedios. 4 es bueno.
+byte rates[RATE_SIZE]; // Array de frecuencias cardíacas
+byte rateSpot = 0; // Posición actual en el array
+long lastBeat = 0; // Tiempo en el que ocurrió el último latido
+
+float beatsPerMinute; // Frecuencia cardíaca en latidos por minuto
+int beatAvg; // Promedio de latidos
+
+void setup() { // Función de configuración
+  Serial.begin(115200); // Inicializar la comunicación serie a 115200 baudios
+  Serial.println("Initializing..."); // Imprimir "Inicializando..."
+
+  // Inicializar el sensor
+  if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) { // Comenzar el sensor
+    Serial.println("MAX30102 was not found. Please check wiring/power. "); // Imprimir mensaje de error si no se encuentra el sensor
+    while (1); // Bucle infinito
+  }
+  Serial.println("Place your index finger on the sensor with steady pressure."); // Instrucción para colocar el dedo en el sensor
+
+  particleSensor.setup(); // Configurar el sensor con los ajustes predeterminados
+  particleSensor.setPulseAmplitudeRed(0x0A); // Encender el LED rojo en bajo para indicar que el sensor está funcionando
+  particleSensor.setPulseAmplitudeGreen(0); // Apagar el LED verde
+}
+
+void loop() { // Función principal que se ejecuta en bucle
+  long irValue = particleSensor.getIR(); // Obtener el valor IR del sensor
+
+  if (checkForBeat(irValue) == true) { // Si se detecta un latido
+    // ¡Se sintió un latido!
+    long delta = millis() - lastBeat; // Calcular el tiempo desde el último latido
+    lastBeat = millis(); // Actualizar el tiempo del último latido
+
+    beatsPerMinute = 60 / (delta / 1000.0); // Calcular latidos por minuto
+
+    if (beatsPerMinute < 255 && beatsPerMinute > 20) { // Si la frecuencia cardíaca es válida
+      rates[rateSpot++] = (byte)beatsPerMinute; // Almacenar esta lectura en el array
+      rateSpot %= RATE_SIZE; // Envolver la variable
+
+      // Tomar el promedio de las lecturas
+      beatAvg = 0; // Inicializar el promedio
+      for (byte x = 0 ; x < RATE_SIZE ; x++) // Bucle para sumar las frecuencias
+        beatAvg += rates[x]; // Sumar cada frecuencia
+      beatAvg /= RATE_SIZE; // Calcular el promedio
+    }
+  }
+
+  Serial.print("IR="); // Imprimir el valor IR
+  Serial.print(irValue); // Imprimir el valor IR
+  Serial.print(", BPM="); // Imprimir "BPM="
+  Serial.print(beatsPerMinute); // Imprimir latidos por minuto
+  Serial.print(", Avg BPM="); // Imprimir "Promedio BPM="
+  Serial.print(beatAvg); // Imprimir el promedio de latidos
+
+  if (irValue < 50000) // Si el valor IR es bajo
+    Serial.print(" No finger?"); // Imprimir "¿Sin dedo?"
+
+  Serial.println(); // Nueva línea
+}
